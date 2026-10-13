@@ -145,8 +145,6 @@
   .btn:active img{transform:translateY(calc(1.5px * var(--scale))) scale(.93);filter:brightness(.65)}
   .btn:active::after{opacity:1}
   .btn:focus-visible{outline:2px solid #1b6dff;outline-offset:2px}
-
-  /* add #debug to the URL to outline the buttons + display area */
   .debug .btn,.debug .display{outline:1px dashed #ff3b6b}
 </style>
 </head>
@@ -189,8 +187,7 @@
     <div class="segdisp" id="segdisp"></div>
   </div>
 
-  <!-- 7. BUTTONS. Centers (px on cdplayer.png). Edit --x / --y to nudge.
-       Your measured x -> what I used: play/pause 196 -> 196 | stop 247 -> 246 | prev 299 -> 298 | next 350 -> 350 (all y=645) -->
+<!-- buttons ( i think that stop is messed up like it cant be aligned oh well)-->
   <button class="btn" id="btn-play" style="--x:196;--y:645" aria-label="Play / pause"><img src="img/button.png" alt="" draggable="false"></button>
   <button class="btn" id="btn-stop" style="--x:246;--y:645" aria-label="Stop"><img src="img/button.png" alt="" draggable="false"></button>
   <button class="btn" id="btn-prev" style="--x:298;--y:645" aria-label="Previous track"><img src="img/button.png" alt="" draggable="false"></button>
@@ -198,30 +195,34 @@
 </div>
 
 <script>
-/* ============================================================
-   AUDIO FOLDER + TRACKS
-   Put your audio files in the AUDIO_DIR folder (default: audio/ next to index.html).
-   ============================================================ */
+<!--audio section-->
 const AUDIO_DIR = "audio/";
 
 const TRACKS = [
   {
     cover: "img/oasiscd.png",
     src:   AUDIO_DIR + "oasis.mp3",
-    /* >>> TRACK NAME SHOWN ON THE DISPLAY (CD 1): edit the text between the quotes <<< */
     title: "Oasis - Whatever"
   },
   {
     cover: "img/recoverycd.png",
     src:   AUDIO_DIR + "talkin.mp3",
-    /* >>> TRACK NAME SHOWN ON THE DISPLAY (CD 2): edit the text between the quotes <<< */
     title: "Recovery - Talkin 2 Myself"
   },
   {
     cover: "img/pretenderscd.png",
     src:   AUDIO_DIR + "pretenders.mp3",
-    /* >>> TRACK NAME SHOWN ON THE DISPLAY (CD 2): edit the text between the quotes <<< */
     title: "The Pretenders - Dont tell a lie"
+  },
+  {
+    cover: "img/whiplashcd.png",
+    src:   AUDIO_DIR + "whiplash.mp3",
+    title: "Whiplash - Caravan"
+  },
+  {
+    cover: "img/slowdowncd.png",
+    src:   AUDIO_DIR + "slowdown.mp3",
+    title: "Bobby V - Slow Down 12 Version"
   }
 ];
 
