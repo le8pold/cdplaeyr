@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CD Player</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;background:#fff}
+  body{display:flex;align-items:center;justify-content:center}
+
+  /* ============================================================
+     PLAYER BOX. Everything inside is positioned in PIXELS of the
+     original 545x706 cdplayer.png, converted to % automatically,
+     so it all scales together. Change --scale to resize the whole thing.
+     ============================================================ */
+  .player{
+    --scale:1;
+    position:relative;
+    width:calc(545px * var(--scale));
+    aspect-ratio:545 / 706;
+  }
+  .player > *{position:absolute}
+
+  /* LAYER ORDER (bottom -> top):
+     0 black button backings | 1 player art | 2 CD | 3 gloss | 4 tab shadow | 5 tab | 6 display | 7 buttons */
+
+  /* ---------- 0. BLACK BACKINGS behind the button cutouts ---------- */
+  .backing{
+    z-index:0; background:#000; border-radius:50%;
+    --d:31;
+    width:calc(var(--d) / 545 * 100%); aspect-ratio:1;
+    left:calc((var(--x) - var(--d)/2) / 545 * 100%);
+    top:calc((var(--y) - var(--d)/2) / 706 * 100%);
+  }
+
+  /* ---------- 1. PLAYER ART ---------- */
+  .art{z-index:1;inset:0;width:100%;height:100%;display:block;pointer-events:none}
+
+  /* ---------- 2. THE SPINNING CD ----------
+     CD CENTER: x=273, y=238   (px on cdplayer.png)
+     CD DIAMETER: 400 px
+     Two stacked discs (A and B) crossfade inside the same rotating box,
+     so the new disc always appears at the same angle as the old one. */
+  .cd{
+    --cx:273; --cy:238; --cd:400;
+    z-index:2; pointer-events:none; will-change:transform;
+    left:calc(var(--cx) / 545 * 100%);
+    top:calc(var(--cy) / 706 * 100%);
+    width:calc(var(--cd) / 545 * 100%); aspect-ratio:1;
+    transform:translate(-50%,-50%) rotate(0deg);
+  }
+  .cd img.disc{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:0;object-fit:contain}
+  .cd img.disc.front{opacity:1}
+
+  /* ---------- 3. GLASS GLOSS over the disc ---------- */
+  .gloss{
+    z-index:3; pointer-events:none; border-radius:50%;
+    left:calc(273 / 545 * 100%); top:calc(238 / 706 * 100%);
+    width:calc(400 / 545 * 100%); aspect-ratio:1; transform:translate(-50%,-50%);
+    background:linear-gradient(120deg,rgba(255,255,255,.16) 0 30%,transparent 30% 38%,rgba(255,255,255,.06) 38% 44%,transparent 44%);
+  }
+
+  /* ---------- 4. TAB SHADOW cast on the CD ----------
+     TAB BOX on cdplayer.png: left=56  top=224  right=201  bottom=253  (145 x 29 px) */
+  .tabshadow-clip{
+    z-index:4; pointer-events:none; border-radius:50%; overflow:hidden;
+    left:calc(273 / 545 * 100%); top:calc(238 / 706 * 100%);
+    width:calc(400 / 545 * 100%); aspect-ratio:1; transform:translate(-50%,-50%);
+  }
+  .tabshadow{
+    position:absolute;
+    left:calc((56 - 73) / 400 * 100%);
+    top:calc((224 - 38) / 400 * 100%);
+    width:calc(145 / 400 * 100%);
+    height:calc(29 / 400 * 100%);
+    box-shadow: calc(3px * var(--scale)) calc(6px * var(--scale)) calc(9px * var(--scale)) rgba(0,0,0,.5);
+  }
+
+  /* ---------- 5. THE TAB (in front of the CD) ---------- */
+  .tab{z-index:5;inset:0;width:100%;height:100%;display:block;pointer-events:none}
+
+  /* ---------- 6. DISPLAY (the dark box under the CD window) ----------
+     TEXT AREA on cdplayer.png (px):  left=116  top=488  right=370  bottom=517
+     Edit these four numbers to move/resize the display area. */
+  .display{
+    --dl:116; --dt:488; --dr:370; --db:517;
+    --display-color:#ff9d4a;
+    z-index:6; pointer-events:none;
+    left:calc(var(--dl) / 545 * 100%);
+    top:calc(var(--dt) / 706 * 100%);
+    width:calc((var(--dr) - var(--dl)) / 545 * 100%);
+    height:calc((var(--db) - var(--dt)) / 706 * 100%);
+    color:var(--display-color);
+  }
+  .textdisp,.segdisp{position:absolute;inset:0;display:none;align-items:center}
+  .display.mode-text .textdisp{display:flex}
+  .display.mode-segment .segdisp{display:flex}
+
+  /* --- STYLE 1: "text" (smooth-scrolling VFD font) --- */
+  .textdisp{
+    gap:calc(8px * var(--scale));
+    font-family:"VT323","Courier New",monospace;
+    font-size:calc(22px * var(--scale)); line-height:1;
+    text-shadow:0 0 calc(6px * var(--scale)) rgba(255,157,74,.6);
+  }
+  .dtime{flex:none;min-width:4.4ch;text-align:left;font-variant-numeric:tabular-nums}
+  .dsep{flex:none;opacity:.8}
+  .dname{flex:1;min-width:0;overflow:hidden;white-space:nowrap}
+  .dname span{display:inline-block;white-space:nowrap}
+  .dname.scroll span{animation:marq var(--dur,10s) linear infinite}
+  @keyframes marq{from{transform:translateX(var(--from,0))}to{transform:translateX(var(--to,0))}}
+
+  /* --- STYLE 2: "segment" (7-segment, steps one character at a time) ---
+     Cell size is set here. Change the two numbers to make the digits bigger/smaller. */
+  .segdisp{
+    --cw:11; --ch:19; --gap:2;                       /* digit width, height, space between cells (px) */
+    gap:calc(7px * var(--scale));
+    filter:drop-shadow(0 0 calc(3px * var(--scale)) rgba(255,157,74,.75));
+  }
+  .segrow{display:flex;align-items:center;gap:calc(var(--gap) * 1px * var(--scale))}
+  .segname{flex:1;min-width:0;overflow:hidden}
+  .segcell{display:block;flex:none;height:calc(var(--ch) * 1px * var(--scale));fill:currentColor}
+  .segcell.digit{width:calc(var(--cw) * 1px * var(--scale))}
+  .segcell.thin{width:calc(4px * var(--scale))}
+  .segcell .seg{opacity:.09}                         /* unlit segments stay faintly visible */
+  .segcell .seg.on{opacity:1}
+
+  /* ---------- 7. BUTTONS (pressed look on :active only, no hover) ---------- */
+  .btn{
+    --bw:27;
+    z-index:7; padding:0; border:0; background:none; cursor:pointer; border-radius:50%;
+    width:calc(var(--bw) / 545 * 100%); aspect-ratio:1;
+    left:calc((var(--x) - var(--bw)/2) / 545 * 100%);
+    top:calc((var(--y) - var(--bw)/2) / 706 * 100%);
+    -webkit-tap-highlight-color:transparent;
+  }
+  .btn img{width:100%;height:100%;display:block;pointer-events:none;transition:transform .05s, filter .05s}
+  .btn::after{
+    content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;
+    box-shadow:inset 0 calc(3px * var(--scale)) calc(5px * var(--scale)) rgba(0,0,0,.85);
+    opacity:0;transition:opacity .05s;
+  }
+  .btn:active img{transform:translateY(calc(1.5px * var(--scale))) scale(.93);filter:brightness(.65)}
+  .btn:active::after{opacity:1}
+  .btn:focus-visible{outline:2px solid #1b6dff;outline-offset:2px}
+
+  /* add #debug to the URL to outline the buttons + display area */
+  .debug .btn,.debug .display{outline:1px dashed #ff3b6b}
+</style>
+</head>
+<body>
+
+<div class="player" id="player">
+
+  <!-- 0. BUTTON BACKINGS. Centers (px on cdplayer.png). Edit --x / --y to nudge. -->
+  <div class="backing" style="--x:196;--y:645"></div> <!-- play/pause -->
+  <div class="backing" style="--x:246;--y:645"></div> <!-- stop -->
+  <div class="backing" style="--x:298;--y:645"></div> <!-- prev -->
+  <div class="backing" style="--x:350;--y:645"></div> <!-- next -->
+
+  <!-- 1. Player art -->
+  <img class="art" src="img/cdplayer.png" alt="Vertical CD player">
+
+  <!-- 2. CD (two stacked discs for the crossfade) -->
+  <div class="cd" id="cd">
+    <img class="disc front" id="discA" alt="" draggable="false">
+    <img class="disc" id="discB" alt="" draggable="false">
+  </div>
+
+  <!-- 3. Gloss -->
+  <div class="gloss"></div>
+
+  <!-- 4. Tab shadow on the CD -->
+  <div class="tabshadow-clip"><div class="tabshadow"></div></div>
+
+  <!-- 5. Tab -->
+  <img class="tab" src="img/cdplayertab.png" alt="">
+
+  <!-- 6. DISPLAY: time | track name. Two styles live here; the script shows one of them.
+          (the segment display builds itself inside .segdisp from the script) -->
+  <div class="display" id="display">
+    <div class="textdisp">
+      <span class="dtime" id="dtime">0:00</span>
+      <span class="dsep">|</span>
+      <div class="dname" id="dname"><span id="dtext"></span></div>
+    </div>
+    <div class="segdisp" id="segdisp"></div>
+  </div>
+
+  <!-- 7. BUTTONS. Centers (px on cdplayer.png). Edit --x / --y to nudge.
+       Your measured x -> what I used: play/pause 196 -> 196 | stop 247 -> 246 | prev 299 -> 298 | next 350 -> 350 (all y=645) -->
+  <button class="btn" id="btn-play" style="--x:196;--y:645" aria-label="Play / pause"><img src="img/button.png" alt="" draggable="false"></button>
+  <button class="btn" id="btn-stop" style="--x:246;--y:645" aria-label="Stop"><img src="img/button.png" alt="" draggable="false"></button>
+  <button class="btn" id="btn-prev" style="--x:298;--y:645" aria-label="Previous track"><img src="img/button.png" alt="" draggable="false"></button>
+  <button class="btn" id="btn-next" style="--x:350;--y:645" aria-label="Next track"><img src="img/button.png" alt="" draggable="false"></button>
+</div>
+
+<script>
+/* ============================================================
+   AUDIO FOLDER + TRACKS
+   Put your audio files in the AUDIO_DIR folder (default: audio/ next to index.html).
+   ============================================================ */
+const AUDIO_DIR = "audio/";
+
+const TRACKS = [
+  {
+    cover: "img/oasiscd.png",
+    src:   AUDIO_DIR + "oasis.mp3",
+    /* >>> TRACK NAME SHOWN ON THE DISPLAY (CD 1): edit the text between the quotes <<< */
+    title: "Oasis - Whatever"
+  },
+  {
+    cover: "img/recoverycd.png",
+    src:   AUDIO_DIR + "talkin.mp3",
+    /* >>> TRACK NAME SHOWN ON THE DISPLAY (CD 2): edit the text between the quotes <<< */
+    title: "Recovery - Talkin 2 Myself"
+  },
+  {
+    cover: "img/pretenderscd.png",
+    src:   AUDIO_DIR + "pretenders.mp3",
+    /* >>> TRACK NAME SHOWN ON THE DISPLAY (CD 2): edit the text between the quotes <<< */
+    title: "The Pretenders - Dont tell a lie"
+  }
+];
+
+/* ---------- display style: "segment" (7-segment) or "text" (smooth VFD text) ----------
+   Change the default here, or test quickly with  index.html?display=text  */
+const DISPLAY_STYLE = new URLSearchParams(location.search).get("display") || "segment";
+
+/* ---------- tweakables ---------- */
+const MAX_SPEED   = 220;   // CD degrees per second at full speed
+const SPIN_UP_TAU = 0.9;   // seconds: larger = slower to get up to speed
+const SLOW_TAU    = 1.6;   // seconds: larger = longer coast to a stop
+const FADE_MS     = 700;   // crossfade duration between CDs
+const SCROLL_PX_S = 45;    // "text" style: scroll speed (px per second)
+const SEG_STEP_MS = 320;   // "segment" style: time per one-character step
+const SEG_HOLD    = 4;     // "segment" style: steps to pause before scrolling starts / restarts
+const RESTART_AFTER = 3;   // Prev restarts the track if more than this many seconds in
+
+const $ = id => document.getElementById(id);
+const cd = $("cd");
+
+/* ---------- spin engine (one shared angle, so CDs always swap at the same orientation) ---------- */
+let angle = 0, speed = 0, target = 0, last = 0, raf = null;
+function frame(now){
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  const tau = target > speed ? SPIN_UP_TAU : SLOW_TAU;
+  speed += (target - speed) * (1 - Math.exp(-dt / tau));
+  angle = (angle + speed * dt) % 360;
+  cd.style.transform = `translate(-50%,-50%) rotate(${angle}deg)`;
+  if (target === 0 && speed < 0.2){ speed = 0; raf = null; return; }
+  raf = requestAnimationFrame(frame);
+}
+function setSpin(on){
+  target = on ? MAX_SPEED : 0;
+  if (!raf){ last = performance.now(); raf = requestAnimationFrame(frame); }
+}
+
+/* ============================================================
+   DISPLAY. Both styles expose the same two functions:
+     setName(text)  -> the track name   (this is where the title appears)
+     setTime(secs)  -> the elapsed time
+   ============================================================ */
+const fmt = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+
+/* ----- style 1: "text" ----- */
+const dname = $("dname"), dtext = $("dtext");
+const textDisplay = {
+  setName(text){
+    dtext.textContent = text;
+    dname.classList.remove("scroll");
+    requestAnimationFrame(() => {
+      const box = dname.clientWidth, txt = dtext.scrollWidth;
+      if (txt > box){                                   // too long: scroll right -> left
+        dname.style.setProperty("--from", box + "px");
+        dname.style.setProperty("--to", -txt + "px");
+        dname.style.setProperty("--dur", ((box + txt) / SCROLL_PX_S) + "s");
+        dname.classList.add("scroll");
+      }
+    });
+  },
+  setTime(s){ $("dtime").textContent = fmt(s); }
+};
+
+/* ----- style 2: "segment" (7-segment) -----
+   Segments: a=top b=upper-right c=lower-right d=bottom e=lower-left f=upper-left g=middle.
+   7-segment can't draw every letter, so M W K V X Z etc. are approximations. */
+const SEG_POLY = {
+  a:"2,0 10,0 11,1 10,2 2,2 1,1",      b:"10,2 11,1 12,2 12,9 11,10 10,9",
+  c:"10,11 11,10 12,11 12,18 11,19 10,18", d:"2,18 10,18 11,19 10,20 2,20 1,19",
+  e:"0,11 1,10 2,11 2,18 1,19 0,18",   f:"0,2 1,1 2,2 2,9 1,10 0,9",
+  g:"2,9 10,9 11,10 10,11 2,11 1,10"
+};
+const GLYPHS = {
+  "0":"abcdef","1":"bc","2":"abdeg","3":"abcdg","4":"bcfg","5":"acdfg","6":"acdefg","7":"abc","8":"abcdefg","9":"abcdfg",
+  A:"abcefg",B:"cdefg",C:"adef",D:"bcdeg",E:"adefg",F:"aefg",G:"acdef",H:"bcefg",I:"ef",J:"bcde",K:"efg",L:"def",
+  M:"abcef",N:"ceg",O:"abcdef",P:"abefg",Q:"abcfg",R:"eg",S:"acdfg",T:"defg",U:"bcdef",V:"cde",W:"bdf",X:"bcefg",
+  Y:"bcdfg",Z:"abdeg","-":"g","_":"d","'":"f","(":"adef",")":"abcd","=":"dg"," ":""
+};
+const SVGNS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs){ const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+function makeDigitCell(){
+  const svg = svgEl("svg", { viewBox:"0 0 12 20", class:"segcell digit", preserveAspectRatio:"none" });
+  svg.segs = {};
+  for (const k in SEG_POLY){ svg.segs[k] = svgEl("polygon", { points:SEG_POLY[k], class:"seg" }); svg.appendChild(svg.segs[k]); }
+  return svg;
+}
+function makeThinCell(kind){                                      // colon or pipe
+  const svg = svgEl("svg", { viewBox:"0 0 4 20", class:"segcell thin", preserveAspectRatio:"none" });
+  if (kind === "colon"){ svg.append(svgEl("rect",{x:1,y:5,width:2,height:3,class:"seg on"}), svgEl("rect",{x:1,y:12,width:2,height:3,class:"seg on"})); }
+  else svg.append(svgEl("rect",{x:1,y:0,width:2,height:20,class:"seg on"}));
+  return svg;
+}
+function setCell(cell, ch){
+  const on = GLYPHS[ch] || "";
+  for (const k in cell.segs) cell.segs[k].classList.toggle("on", on.includes(k));
+}
+
+const segDisplay = (() => {
+  const root = $("segdisp");
+  const timeRow = document.createElement("div"); timeRow.className = "segrow";
+  const timeCells = [makeDigitCell(), makeDigitCell(), makeDigitCell(), makeDigitCell()];   // m m : s s
+  timeRow.append(timeCells[0], timeCells[1], makeThinCell("colon"), timeCells[2], timeCells[3]);
+  const nameRow = document.createElement("div"); nameRow.className = "segrow segname";
+  root.append(timeRow, makeThinCell("pipe"), nameRow);
+
+  let cells = [], N = 0, timer = null, offset = 0, hold = 0;
+  function build(){                                               // how many characters fit in the box?
+    nameRow.textContent = ""; cells = [];
+    const probe = makeDigitCell(); nameRow.append(probe);
+    const cw = probe.getBoundingClientRect().width, gap = parseFloat(getComputedStyle(nameRow).columnGap) || 0;
+    nameRow.textContent = "";
+    N = Math.max(1, Math.floor((nameRow.clientWidth + gap) / (cw + gap)));
+    for (let i = 0; i < N; i++){ const c = makeDigitCell(); cells.push(c); nameRow.append(c); }
+  }
+  const show = str => cells.forEach((c, i) => setCell(c, str[i] || " "));
+  return {
+    setName(text){
+      if (!cells.length) build();
+      clearInterval(timer);
+      text = text.toUpperCase(); offset = 0; hold = SEG_HOLD;
+      if (text.length <= N){ show(text); return; }                // fits: stays still
+      const loop = text + "   ";                                  // 3 blank cells between repeats
+      const frame = o => { let s = ""; for (let i = 0; i < N; i++) s += loop[(o + i) % loop.length]; return s; };
+      show(frame(0));
+      timer = setInterval(() => {                                 // one character per step, right -> left
+        if (hold > 0){ hold--; return; }
+        offset = (offset + 1) % loop.length;
+        if (offset === 0) hold = SEG_HOLD;
+        show(frame(offset));
+      }, SEG_STEP_MS);
+    },
+    setTime(s){
+      const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+      const str = String(m).padStart(2, " ") + String(sec).padStart(2, "0");   // " 034" -> " 0:34"
+      timeCells.forEach((c, i) => setCell(c, str[i]));
+    }
+  };
+})();
+
+/* ----- pick the style ----- */
+const display = DISPLAY_STYLE === "text" ? textDisplay : segDisplay;
+$("display").classList.add(DISPLAY_STYLE === "text" ? "mode-text" : "mode-segment");
+
+/* ---------- audio ---------- */
+const audio = new Audio();
+audio.preload = "auto";
+let idx = 0;
+const showTime = () => display.setTime(audio.currentTime);
+audio.addEventListener("timeupdate", showTime);
+audio.addEventListener("ended", () => goTo(idx + 1, true));       // auto-advance to the next CD
+audio.addEventListener("error", () => display.setName("audio file not found: " + TRACKS[idx].src));
+
+/* ---------- crossfade between CD images ---------- */
+const discs = [$("discA"), $("discB")];
+let front = 0, switching = false;
+function swapCover(src){
+  return new Promise(resolve => {
+    const cur = discs[front], back = discs[1 - front];
+    back.src = src;
+    (back.decode ? back.decode() : Promise.resolve()).catch(() => {}).then(() => {
+      back.style.transition = "none"; back.style.opacity = 0;
+      back.style.zIndex = 2; cur.style.zIndex = 1;      // new disc fades in ON TOP of the old one
+      void back.offsetWidth;
+      back.style.transition = `opacity ${FADE_MS}ms ease`;
+      back.style.opacity = 1;
+      setTimeout(() => {
+        cur.style.transition = "none"; cur.style.opacity = 0;
+        front = 1 - front; resolve();
+      }, FADE_MS + 20);
+    });
+  });
+}
+
+/* ---------- track switching ---------- */
+function goTo(i, forcePlay = false){
+  if (switching) return;                                  // ignore clicks mid-fade
+  switching = true;
+  const wasPlaying = forcePlay || !audio.paused;
+  idx = (i + TRACKS.length) % TRACKS.length;
+  const t = TRACKS[idx];
+  audio.src = t.src;
+  display.setTime(0);
+  display.setName(t.title);                               // <- the track name goes to the display here
+  if (wasPlaying){ audio.play().catch(() => {}); setSpin(true); }
+  swapCover(t.cover).then(() => { switching = false; });
+}
+
+/* ---------- buttons ---------- */
+$("btn-play").addEventListener("click", () => {
+  if (audio.paused){ audio.play().then(() => setSpin(true)).catch(() => {}); }
+  else { audio.pause(); setSpin(false); }
+});
+$("btn-stop").addEventListener("click", () => { audio.pause(); audio.currentTime = 0; showTime(); setSpin(false); });
+$("btn-prev").addEventListener("click", () => {
+  if (audio.currentTime > RESTART_AFTER){ audio.currentTime = 0; showTime(); }   // like a real player
+  else goTo(idx - 1);
+});
+$("btn-next").addEventListener("click", () => goTo(idx + 1));
+
+/* ---------- start ---------- */
+discs[0].src = TRACKS[0].cover;
+audio.src = TRACKS[0].src;
+display.setTime(0);
+display.setName(TRACKS[0].title);                         // <- initial track name on the display
+if (DISPLAY_STYLE === "text" && document.fonts) document.fonts.ready.then(() => display.setName(TRACKS[idx].title));
+if (location.hash === "#debug") $("player").classList.add("debug");
+</script>
+</body>
+</html>
